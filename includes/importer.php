@@ -317,5 +317,12 @@ function import_by_isbn($isbn)
         hs_increment_books_added($author_id);
     }
 
+    // Manually trigger search indexing after all fields are updated
+    // This ensures ISBN and Author are properly indexed
+    if (function_exists('hs_search_add_to_index'))
+    {
+        hs_search_add_to_index($post_id);
+    }
+
     return $post_id;
 }

@@ -220,29 +220,7 @@ function hs_activate()
 register_activation_hook(__FILE__, 'hs_activate');
 
 
-// Make sure books are indexed as soon as they are added.
-add_action('save_post_book', function($post_id)
-{
-	if(wp_is_post_revision($post_id))
-	{
-		return;
-	}
-
-	global $wpdb;
-	$isbn = get_field('book_isbn', $post_id);
-	$pages = get_field('book_nop', $post_id);
-	$title = get_post_field('post_title', $post_id);
-	$author = get_field('book_author', $post_id);
-
-	$wpdb -> insert($wpdb -> prefix . 'hs_search_table', array(
-		'book_id' => $post_id,
-		'title' => $title,
-		'author' => $author,
-		'isbn' => $isbn,
-		'pages' => $pages,
-		'permalink' => get_permalink($post_id),
-	), array('%d', '%s', '%s', '%s', '%d', '%s'));
-}, 10, 1);
+// Search indexing is now handled by the hs_search_add_to_index() function in includes/search.php
 
 function hs_support_tickets_create_table()
 {
