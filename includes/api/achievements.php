@@ -462,21 +462,40 @@ function gread_get_user_stats_for_achievements($user_id) {
  * Format achievement data for API response
  */
 function gread_format_achievement($achievement) {
+    // Build icon object with custom SVG support
+    $icon = array(
+        'type' => $achievement->icon_type,
+        'color' => $achievement->icon_color,
+        'symbol' => function_exists('hs_get_icon_symbol') ? hs_get_icon_symbol($achievement->icon_type) : '⭐'
+    );
+
+    // Add custom icon URL if available
+    if (!empty($achievement->custom_icon_url)) {
+        $icon['custom_url'] = $achievement->custom_icon_url;
+    }
+
+    // Build unlock requirements - handle both simple and multiple
+    $unlock_requirements = array(
+        'condition' => $achievement->unlock_condition
+    );
+
+    if ($achievement->unlock_condition === 'all' && !empty($achievement->condition_data)) {
+        // Multiple requirements
+        $requirements = json_decode($achievement->condition_data, true);
+        $unlock_requirements['requirements'] = is_array($requirements) ? $requirements : [];
+    } else {
+        // Simple requirement (backward compatibility)
+        $unlock_requirements['metric'] = $achievement->unlock_metric;
+        $unlock_requirements['value'] = intval($achievement->unlock_value);
+    }
+
     return array(
         'id' => intval($achievement->id),
         'slug' => $achievement->slug,
         'name' => $achievement->name,
         'description' => $achievement->description,
-        'icon' => array(
-            'type' => $achievement->icon_type,
-            'color' => $achievement->icon_color,
-            'symbol' => function_exists('hs_get_icon_symbol') ? hs_get_icon_symbol($achievement->icon_type) : '⭐'
-        ),
-        'unlock_requirements' => array(
-            'metric' => $achievement->unlock_metric,
-            'value' => intval($achievement->unlock_value),
-            'condition' => $achievement->unlock_condition
-        ),
+        'icon' => $icon,
+        'unlock_requirements' => $unlock_requirements,
         'reward' => intval($achievement->points_reward),
         'is_hidden' => boolval($achievement->is_hidden),
         'display_order' => intval($achievement->display_order)
@@ -488,29 +507,86 @@ function gread_format_achievement($achievement) {
  * Format achievement with user progress
  */
 function gread_format_achievement_with_progress($achievement, $user_stats) {
-    $current_value = isset($user_stats[$achievement->unlock_metric]) ? $user_stats[$achievement->unlock_metric] : 0;
-    $progress_percentage = $achievement->unlock_value > 0 ? min(100, ($current_value / $achievement->unlock_value) * 100) : 0;
+    // Build icon object with custom SVG support
+    $icon = array(
+        'type' => $achievement->icon_type,
+        'color' => $achievement->icon_color,
+        'symbol' => function_exists('hs_get_icon_symbol') ? hs_get_icon_symbol($achievement->icon_type) : '⭐'
+    );
+
+    // Add custom icon URL if available
+    if (!empty($achievement->custom_icon_url)) {
+        $icon['custom_url'] = $achievement->custom_icon_url;
+    }
+
+    // Build unlock requirements and progress
+    $unlock_requirements = array(
+        'condition' => $achievement->unlock_condition
+    );
+
+    $progress = array();
+
+    if ($achievement->unlock_condition === 'all' && !empty($achievement->condition_data)) {
+        // Multiple requirements - show progress for each
+        $requirements = json_decode($achievement->condition_data, true);
+
+        if (is_array($requirements)) {
+            $unlock_requirements['requirements'] = $requirements;
+
+            // Calculate progress for each requirement
+            $progress['requirements'] = array();
+            $all_requirements_met = true;
+            $total_percentage = 0;
+
+            foreach ($requirements as $req) {
+                if (isset($req['metric']) && isset($req['value'])) {
+                    $metric = $req['metric'];
+                    $required_value = intval($req['value']);
+                    $current_value = isset($user_stats[$metric]) ? intval($user_stats[$metric]) : 0;
+                    $req_percentage = $required_value > 0 ? min(100, ($current_value / $required_value) * 100) : 0;
+
+                    $progress['requirements'][] = array(
+                        'metric' => $metric,
+                        'current' => $current_value,
+                        'required' => $required_value,
+                        'percentage' => round($req_percentage, 2),
+                        'met' => $current_value >= $required_value
+                    );
+
+                    if ($current_value < $required_value) {
+                        $all_requirements_met = false;
+                    }
+                    $total_percentage += $req_percentage;
+                }
+            }
+
+            // Overall progress is average of all requirements
+            $progress['overall_percentage'] = count($requirements) > 0 ? round($total_percentage / count($requirements), 2) : 0;
+            $progress['all_requirements_met'] = $all_requirements_met;
+        }
+    } else {
+        // Simple requirement (backward compatibility)
+        $unlock_requirements['metric'] = $achievement->unlock_metric;
+        $unlock_requirements['value'] = intval($achievement->unlock_value);
+
+        $current_value = isset($user_stats[$achievement->unlock_metric]) ? $user_stats[$achievement->unlock_metric] : 0;
+        $progress_percentage = $achievement->unlock_value > 0 ? min(100, ($current_value / $achievement->unlock_value) * 100) : 0;
+
+        $progress = array(
+            'current' => intval($current_value),
+            'required' => intval($achievement->unlock_value),
+            'percentage' => round($progress_percentage, 2)
+        );
+    }
 
     return array(
         'id' => intval($achievement->id),
         'slug' => $achievement->slug,
         'name' => $achievement->name,
         'description' => $achievement->description,
-        'icon' => array(
-            'type' => $achievement->icon_type,
-            'color' => $achievement->icon_color,
-            'symbol' => function_exists('hs_get_icon_symbol') ? hs_get_icon_symbol($achievement->icon_type) : '⭐'
-        ),
-        'unlock_requirements' => array(
-            'metric' => $achievement->unlock_metric,
-            'value' => intval($achievement->unlock_value),
-            'condition' => $achievement->unlock_condition
-        ),
-        'progress' => array(
-            'current' => intval($current_value),
-            'required' => intval($achievement->unlock_value),
-            'percentage' => round($progress_percentage, 2)
-        ),
+        'icon' => $icon,
+        'unlock_requirements' => $unlock_requirements,
+        'progress' => $progress,
         'is_unlocked' => boolval($achievement->is_unlocked),
         'date_unlocked' => $achievement->is_unlocked ? $achievement->date_unlocked : null,
         'reward' => intval($achievement->points_reward),

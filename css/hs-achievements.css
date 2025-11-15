@@ -148,6 +148,25 @@
     font-weight: 600;
 }
 
+/* Multiple requirements */
+.hs-achievement-requirements {
+    margin-top: 8px;
+}
+
+.hs-achievement-requirements .hs-achievement-requirement {
+    margin: 4px 0;
+    padding: 4px 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #e0e0e0;
+}
+
+.hs-achievement-requirements .hs-achievement-requirement.requirement-met {
+    border-left-color: #4CAF50;
+    background: #f1f8f4;
+    color: #2e7d32;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .hs-achievements-grid {

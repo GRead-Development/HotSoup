@@ -23,6 +23,7 @@ function hs_achievements_create_table()
 		description text,
 		icon_type varchar(20) NOT NULL DEFAULT 'star',
 		icon_color varchar(7) NOT NULL DEFAULT '#FFD700',
+		custom_icon_url varchar(255) DEFAULT NULL,
 		unlock_metric varchar(50) NOT NULL,
 		unlock_value int(11) NOT NULL,
 		unlock_condition varchar(20) DEFAULT 'simple' AFTER unlock_value,
@@ -85,14 +86,71 @@ function hs_achievements_admin_page_html()
 	{
 		$achievement_id = isset($_POST['achievement_id']) ? intval($_POST['achievement_id']) : 0;
 
+		// Handle SVG icon upload
+		$custom_icon_url = '';
+		if (isset($_FILES['custom_icon_svg']) && $_FILES['custom_icon_svg']['error'] === UPLOAD_ERR_OK) {
+			$file = $_FILES['custom_icon_svg'];
+			$file_type = wp_check_filetype($file['name']);
+
+			// Only allow SVG files
+			if ($file_type['ext'] === 'svg') {
+				$upload_dir = wp_upload_dir();
+				$achievement_icons_dir = $upload_dir['basedir'] . '/achievement-icons';
+
+				// Create directory if it doesn't exist
+				if (!file_exists($achievement_icons_dir)) {
+					wp_mkdir_p($achievement_icons_dir);
+				}
+
+				$filename = sanitize_file_name($file['name']);
+				$filepath = $achievement_icons_dir . '/' . $filename;
+
+				// Move uploaded file
+				if (move_uploaded_file($file['tmp_name'], $filepath)) {
+					$custom_icon_url = $upload_dir['baseurl'] . '/achievement-icons/' . $filename;
+				}
+			}
+		} elseif (isset($_POST['existing_custom_icon_url'])) {
+			// Keep existing custom icon if no new upload
+			$custom_icon_url = sanitize_text_field($_POST['existing_custom_icon_url']);
+		}
+
+		// Remove custom icon if checkbox is checked
+		if (isset($_POST['remove_custom_icon']) && $_POST['remove_custom_icon'] === '1') {
+			$custom_icon_url = '';
+		}
+
+		// Handle multiple requirements
+		$unlock_condition = sanitize_key($_POST['unlock_condition']);
+		$condition_data = '';
+
+		if ($unlock_condition === 'all') {
+			// Build multiple requirements from form data
+			$requirements = [];
+			if (isset($_POST['requirements']) && is_array($_POST['requirements'])) {
+				foreach ($_POST['requirements'] as $req) {
+					if (!empty($req['metric']) && !empty($req['value'])) {
+						$requirements[] = [
+							'metric' => sanitize_key($req['metric']),
+							'value' => intval($req['value'])
+						];
+					}
+				}
+			}
+			$condition_data = json_encode($requirements);
+		}
+
 		$data = [
 		'slug' => sanitize_key($_POST['slug']),
 		'name' => sanitize_text_field($_POST['name']),
 		'description' => sanitize_textarea_field($_POST['description']),
 		'icon_type' => sanitize_key($_POST['icon_type']),
 		'icon_color' => sanitize_hex_color($_POST['icon_color']),
+		'custom_icon_url' => $custom_icon_url,
 		'unlock_metric' => sanitize_key($_POST['unlock_metric']),
 		'unlock_value' => intval($_POST['unlock_value']),
+		'unlock_condition' => $unlock_condition,
+		'condition_data' => $condition_data,
 		'points_reward' => intval($_POST['points_reward']),
 		'is_hidden' => isset($_POST['is_hidden']) ? 1 : 0,
 		'display_order' => intval($_POST['display_order']),
@@ -140,9 +198,10 @@ function hs_achievements_admin_page_html()
 		<div class="col-wrap">
 			<h2><?php echo $achievement_to_edit ? 'Edit Achievement' : 'Add New Achievement'; ?></h2>
 
-		<form method="post">
+		<form method="post" enctype="multipart/form-data">
 			<?php wp_nonce_field('hs_save_achievement', 'hs_save_achievement_nonce'); ?>
 			<input type="hidden" name="achievement_id" value="<?php echo $achievement_to_edit ? esc_attr($achievement_to_edit -> id) : '0'; ?>">
+			<input type="hidden" name="existing_custom_icon_url" value="<?php echo $achievement_to_edit ? esc_attr($achievement_to_edit->custom_icon_url) : ''; ?>">
 
  <div class="form-field">
                             <label for="name">Achievement Name *</label>
@@ -178,8 +237,35 @@ function hs_achievements_admin_page_html()
                             <label for="icon_color">Icon Color</label>
                             <input type="color" name="icon_color" id="icon_color" value="<?php echo $achievement_to_edit ? esc_attr($achievement_to_edit->icon_color) : '#FFD700'; ?>">
                         </div>
-                        
+
+                        <div class="form-field">
+                            <label for="custom_icon_svg">Custom Icon (SVG)</label>
+                            <?php if ($achievement_to_edit && !empty($achievement_to_edit->custom_icon_url)): ?>
+                                <div style="margin-bottom: 10px;">
+                                    <img src="<?php echo esc_url($achievement_to_edit->custom_icon_url); ?>" alt="Custom Icon" style="max-width: 50px; max-height: 50px; background: #f0f0f0; padding: 5px; border-radius: 5px;">
+                                    <p class="description">Current custom icon</p>
+                                    <label>
+                                        <input type="checkbox" name="remove_custom_icon" value="1">
+                                        Remove custom icon
+                                    </label>
+                                </div>
+                            <?php endif; ?>
+                            <input type="file" name="custom_icon_svg" id="custom_icon_svg" accept=".svg">
+                            <p class="description">Upload an SVG file to use as a custom icon. If provided, this will override the icon type above.</p>
+                        </div>
+
                         <h3>Unlock Requirements</h3>
+
+                        <div class="form-field">
+                            <label for="unlock_condition">Requirement Type *</label>
+                            <select name="unlock_condition" id="unlock_condition" required>
+                                <option value="simple" <?php echo $achievement_to_edit && $achievement_to_edit->unlock_condition === 'simple' ? 'selected' : ''; ?>>Single Requirement</option>
+                                <option value="all" <?php echo $achievement_to_edit && $achievement_to_edit->unlock_condition === 'all' ? 'selected' : ''; ?>>Multiple Requirements (all must be met)</option>
+                            </select>
+                            <p class="description">Choose whether this achievement requires one task or multiple tasks to be completed.</p>
+                        </div>
+
+                        <div id="simple-requirement" style="<?php echo $achievement_to_edit && $achievement_to_edit->unlock_condition === 'all' ? 'display:none;' : ''; ?>">
                         
                         <div class="form-field">
                             <label for="unlock_metric">Unlock Metric *</label>
@@ -196,7 +282,53 @@ function hs_achievements_admin_page_html()
                             <label for="unlock_value">Unlock Value *</label>
                             <input type="number" name="unlock_value" id="unlock_value" value="<?php echo $achievement_to_edit ? esc_attr($achievement_to_edit->unlock_value) : ''; ?>" required>
                         </div>
-                        
+
+                        </div><!-- End simple-requirement -->
+
+                        <div id="multiple-requirements" style="<?php echo $achievement_to_edit && $achievement_to_edit->unlock_condition === 'all' ? '' : 'display:none;'; ?>">
+                            <div id="requirements-container">
+                                <?php
+                                // Load existing multiple requirements if editing
+                                $existing_requirements = [];
+                                if ($achievement_to_edit && !empty($achievement_to_edit->condition_data)) {
+                                    $existing_requirements = json_decode($achievement_to_edit->condition_data, true);
+                                }
+
+                                // Show at least one requirement field, or existing requirements
+                                if (empty($existing_requirements)) {
+                                    $existing_requirements = [['metric' => '', 'value' => '']];
+                                }
+
+                                foreach ($existing_requirements as $index => $req):
+                                ?>
+                                <div class="requirement-row" style="padding: 10px; background: #f9f9f9; margin-bottom: 10px; border-radius: 4px;">
+                                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                                        <div style="flex: 1;">
+                                            <label>Metric</label>
+                                            <select name="requirements[<?php echo $index; ?>][metric]" class="requirement-metric">
+                                                <option value="">Select Metric</option>
+                                                <option value="points" <?php echo isset($req['metric']) && $req['metric'] === 'points' ? 'selected' : ''; ?>>Points Earned</option>
+                                                <option value="books_read" <?php echo isset($req['metric']) && $req['metric'] === 'books_read' ? 'selected' : ''; ?>>Books Completed</option>
+                                                <option value="pages_read" <?php echo isset($req['metric']) && $req['metric'] === 'pages_read' ? 'selected' : ''; ?>>Pages Read</option>
+                                                <option value="books_added" <?php echo isset($req['metric']) && $req['metric'] === 'books_added' ? 'selected' : ''; ?>>Books Added to Database</option>
+                                                <option value="approved_reports" <?php echo isset($req['metric']) && $req['metric'] === 'approved_reports' ? 'selected' : ''; ?>>Approved Reports</option>
+                                            </select>
+                                        </div>
+                                        <div style="flex: 1;">
+                                            <label>Value</label>
+                                            <input type="number" name="requirements[<?php echo $index; ?>][value]" class="requirement-value" value="<?php echo isset($req['value']) ? esc_attr($req['value']) : ''; ?>" min="0">
+                                        </div>
+                                        <div>
+                                            <button type="button" class="button remove-requirement" style="margin-bottom: 3px;">Remove</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <button type="button" id="add-requirement" class="button" style="margin-top: 10px;">+ Add Another Requirement</button>
+                            <p class="description">Add multiple requirements. All must be met to unlock this achievement.</p>
+                        </div>
+
                         <div class="form-field">
                             <label for="points_reward">Points Reward</label>
                             <input type="number" name="points_reward" id="points_reward" value="<?php echo $achievement_to_edit ? esc_attr($achievement_to_edit->points_reward) : '0'; ?>">
@@ -253,12 +385,28 @@ function hs_achievements_admin_page_html()
                                         </td>
                                         <td>
                                             <div class="hs-achievement-icon-preview" style="background-color: <?php echo esc_attr($achievement->icon_color); ?>">
-                                                <?php echo hs_get_icon_symbol($achievement->icon_type); ?>
+                                                <?php if (!empty($achievement->custom_icon_url)): ?>
+                                                    <img src="<?php echo esc_url($achievement->custom_icon_url); ?>" alt="Custom Icon" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                                                <?php else: ?>
+                                                    <?php echo hs_get_icon_symbol($achievement->icon_type); ?>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                         <td>
-                                            <?php echo esc_html(ucwords(str_replace('_', ' ', $achievement->unlock_metric))); ?>: 
-                                            <?php echo esc_html($achievement->unlock_value); ?>
+                                            <?php if ($achievement->unlock_condition === 'all' && !empty($achievement->condition_data)): ?>
+                                                <?php
+                                                $requirements = json_decode($achievement->condition_data, true);
+                                                echo '<strong>Multiple Requirements:</strong><br>';
+                                                if (is_array($requirements)) {
+                                                    foreach ($requirements as $req) {
+                                                        echo '• ' . esc_html(ucwords(str_replace('_', ' ', $req['metric']))) . ': ' . esc_html($req['value']) . '<br>';
+                                                    }
+                                                }
+                                                ?>
+                                            <?php else: ?>
+                                                <?php echo esc_html(ucwords(str_replace('_', ' ', $achievement->unlock_metric))); ?>:
+                                                <?php echo esc_html($achievement->unlock_value); ?>
+                                            <?php endif; ?>
                                         </td>
                                         <td><?php echo $achievement->points_reward > 0 ? esc_html($achievement->points_reward) . ' pts' : '—'; ?></td>
                                         <td>
@@ -302,6 +450,66 @@ function hs_achievements_admin_page_html()
             border: 2px solid #ddd;
         }
     </style>
+
+    <script>
+    jQuery(document).ready(function($) {
+        // Toggle between simple and multiple requirements
+        $('#unlock_condition').on('change', function() {
+            if ($(this).val() === 'simple') {
+                $('#simple-requirement').show();
+                $('#multiple-requirements').hide();
+                $('#unlock_metric').prop('required', true);
+                $('#unlock_value').prop('required', true);
+            } else {
+                $('#simple-requirement').hide();
+                $('#multiple-requirements').show();
+                $('#unlock_metric').prop('required', false);
+                $('#unlock_value').prop('required', false);
+            }
+        });
+
+        // Add new requirement row
+        let requirementIndex = <?php echo $achievement_to_edit && !empty($achievement_to_edit->condition_data) ? count(json_decode($achievement_to_edit->condition_data, true)) : 1; ?>;
+
+        $('#add-requirement').on('click', function() {
+            const newRow = `
+                <div class="requirement-row" style="padding: 10px; background: #f9f9f9; margin-bottom: 10px; border-radius: 4px;">
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label>Metric</label>
+                            <select name="requirements[${requirementIndex}][metric]" class="requirement-metric">
+                                <option value="">Select Metric</option>
+                                <option value="points">Points Earned</option>
+                                <option value="books_read">Books Completed</option>
+                                <option value="pages_read">Pages Read</option>
+                                <option value="books_added">Books Added to Database</option>
+                                <option value="approved_reports">Approved Reports</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1;">
+                            <label>Value</label>
+                            <input type="number" name="requirements[${requirementIndex}][value]" class="requirement-value" min="0">
+                        </div>
+                        <div>
+                            <button type="button" class="button remove-requirement" style="margin-bottom: 3px;">Remove</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            $('#requirements-container').append(newRow);
+            requirementIndex++;
+        });
+
+        // Remove requirement row
+        $(document).on('click', '.remove-requirement', function() {
+            if ($('.requirement-row').length > 1) {
+                $(this).closest('.requirement-row').remove();
+            } else {
+                alert('You must have at least one requirement.');
+            }
+        });
+    });
+    </script>
     <?php
 }
 
@@ -351,15 +559,6 @@ function hs_check_user_achievements($user_id)
 
 
 	// Retrieve user statistics
-	$user_stats = [
-		'points' => (int) get_user_meta($user_id, 'user_points', true),
-		'books_read' => (int) get_user_meta($user_id, 'hs_completed_books_count', true),
-		'pages_read' => (int) get_user_meta($user_id, 'hs_total_pages_read', true),
-		'books_added' => (int) get_user_meta($user_id, 'hs_books_added_count', true),
-		'approved_reports' => (int) get_user_meta($user_id, 'hs_approved_reports_count', true),
-	];
-
-
 	$metric_map = [
 		'points' => 'user_points',
 		'books_read' => 'hs_completed_books_count',
@@ -372,33 +571,70 @@ function hs_check_user_achievements($user_id)
 	foreach ($metric_map as $metric => $meta_key)
 	{
 		$user_stats[$metric] = (int) get_user_meta($user_id, $meta_key, true);
+	}
 
 
 	// Check each achievement
 	foreach ($unearned_achievements as $achievement)
 	{
-		$metric = $achievement -> unlock_metric;
+		$should_unlock = false;
 
-		if (isset($user_stats[$metric]) && $user_stats[$metric] >= $achievement -> unlock_value)
+		// Check if this is a simple or multiple requirement achievement
+		if ($achievement->unlock_condition === 'all' && !empty($achievement->condition_data))
+		{
+			// Multiple requirements - all must be met
+			$requirements = json_decode($achievement->condition_data, true);
+
+			if (is_array($requirements) && !empty($requirements))
+			{
+				$all_met = true;
+				foreach ($requirements as $req)
+				{
+					if (isset($req['metric']) && isset($req['value']))
+					{
+						$metric = $req['metric'];
+						$required_value = (int) $req['value'];
+
+						if (!isset($user_stats[$metric]) || $user_stats[$metric] < $required_value)
+						{
+							$all_met = false;
+							break;
+						}
+					}
+				}
+				$should_unlock = $all_met;
+			}
+		}
+		else
+		{
+			// Simple requirement - single metric
+			$metric = $achievement->unlock_metric;
+			if (isset($user_stats[$metric]) && $user_stats[$metric] >= $achievement->unlock_value)
+			{
+				$should_unlock = true;
+			}
+		}
+
+		// Unlock the achievement if conditions are met
+		if ($should_unlock)
 		{
 			$wpdb -> insert(
-			$user_achievements_table,
-			[
-				'user_id' => $user_id,
-				'achievement_id' => $achievement -> id,
-				'date_unlocked' => current_time('mysql'),
-			],
-			['%d', '%d', '%s']
-		);
+				$user_achievements_table,
+				[
+					'user_id' => $user_id,
+					'achievement_id' => $achievement -> id,
+					'date_unlocked' => current_time('mysql'),
+				],
+				['%d', '%d', '%s']
+			);
 
-
-		// If points are part of the achievement, award points
-		if ($achievement -> points_reward > 0 && function_exists('award_points'))
-		{
-			award_points($user_id, $achievement -> points_reward);
+			// If points are part of the achievement, award points
+			if ($achievement -> points_reward > 0 && function_exists('award_points'))
+			{
+				award_points($user_id, $achievement -> points_reward);
+			}
 		}
 	}
-}}
 }
 add_action('hs_stats_updated', 'hs_check_user_achievements', 10, 1);
 add_action('hs_points_updated', 'hs_check_user_achievements', 10, 1);
@@ -495,25 +731,63 @@ function hs_render_achievements_display()
             <?php foreach ($all_achievements as $achievement): ?>
                 <?php
                 $is_unlocked = $achievement->is_unlocked;
-                $progress_percentage = 0;
-                $current_value = 0;
+                $is_hidden = $achievement->is_hidden && !$is_unlocked;
 
-                if (!$is_unlocked) {
+                // Calculate progress based on requirement type
+                $progress_percentage = 0;
+                $requirements_data = [];
+
+                if ($achievement->unlock_condition === 'all' && !empty($achievement->condition_data)) {
+                    // Multiple requirements
+                    $requirements = json_decode($achievement->condition_data, true);
+
+                    if (is_array($requirements)) {
+                        $total_percentage = 0;
+                        foreach ($requirements as $req) {
+                            if (isset($req['metric']) && isset($req['value'])) {
+                                $current_val = isset($user_stats[$req['metric']]) ? $user_stats[$req['metric']] : 0;
+                                $req_percentage = $req['value'] > 0 ? min(100, ($current_val / $req['value']) * 100) : 0;
+
+                                $requirements_data[] = [
+                                    'metric' => $req['metric'],
+                                    'current' => $current_val,
+                                    'required' => $req['value'],
+                                    'percentage' => $req_percentage,
+                                    'met' => $current_val >= $req['value']
+                                ];
+
+                                $total_percentage += $req_percentage;
+                            }
+                        }
+                        $progress_percentage = count($requirements) > 0 ? ($total_percentage / count($requirements)) : 0;
+                    }
+                } else {
+                    // Simple requirement
                     $current_value = isset($user_stats[$achievement->unlock_metric]) ? $user_stats[$achievement->unlock_metric] : 0;
                     if ($achievement->unlock_value > 0) {
                         $progress_percentage = min(100, ($current_value / $achievement->unlock_value) * 100);
                     }
-                } else {
-                    $progress_percentage = 100;
+
+                    $requirements_data[] = [
+                        'metric' => $achievement->unlock_metric,
+                        'current' => $current_value,
+                        'required' => $achievement->unlock_value,
+                        'percentage' => $progress_percentage,
+                        'met' => $current_value >= $achievement->unlock_value
+                    ];
                 }
 
-                $is_hidden = $achievement->is_hidden && !$is_unlocked;
+                if ($is_unlocked) {
+                    $progress_percentage = 100;
+                }
                 ?>
 
                 <div class="hs-achievement-item <?php echo $is_unlocked ? 'unlocked' : 'locked'; ?> <?php echo $is_hidden ? 'hidden-achievement' : ''; ?>">
                     <div class="hs-achievement-icon" style="background-color: <?php echo $is_unlocked ? esc_attr($achievement->icon_color) : '#ccc'; ?>">
                         <?php if ($is_hidden): ?>
                             <span class="hidden-icon">?</span>
+                        <?php elseif (!empty($achievement->custom_icon_url)): ?>
+                            <img src="<?php echo esc_url($achievement->custom_icon_url); ?>" alt="Achievement Icon" style="width: 100%; height: 100%; object-fit: contain;">
                         <?php else: ?>
                             <?php echo hs_get_icon_symbol($achievement->icon_type); ?>
                         <?php endif; ?>
@@ -531,14 +805,31 @@ function hs_render_achievements_display()
                             <div class="hs-achievement-progress-bar">
                                 <div class="hs-progress-fill" style="width: <?php echo esc_attr($progress_percentage); ?>%;"></div>
                             </div>
-                            <p class="hs-achievement-requirement">
-                                <?php if ($is_unlocked): ?>
+
+                            <?php if ($is_unlocked): ?>
+                                <p class="hs-achievement-requirement">
                                     <span class="unlocked-text">✓ Unlocked <?php echo human_time_diff(strtotime($achievement->date_unlocked), current_time('timestamp')); ?> ago</span>
+                                </p>
+                            <?php else: ?>
+                                <?php if (count($requirements_data) > 1): ?>
+                                    <!-- Multiple requirements -->
+                                    <div class="hs-achievement-requirements">
+                                        <?php foreach ($requirements_data as $req): ?>
+                                            <p class="hs-achievement-requirement <?php echo $req['met'] ? 'requirement-met' : ''; ?>">
+                                                <?php echo $req['met'] ? '✓' : '○'; ?>
+                                                <?php echo number_format($req['current']); ?> / <?php echo number_format($req['required']); ?>
+                                                <?php echo esc_html(ucwords(str_replace('_', ' ', $req['metric']))); ?>
+                                            </p>
+                                        <?php endforeach; ?>
+                                    </div>
                                 <?php else: ?>
-                                    <?php echo number_format($current_value); ?> / <?php echo number_format($achievement->unlock_value); ?> 
-                                    <?php echo esc_html(ucwords(str_replace('_', ' ', $achievement->unlock_metric))); ?>
+                                    <!-- Single requirement -->
+                                    <p class="hs-achievement-requirement">
+                                        <?php echo number_format($requirements_data[0]['current']); ?> / <?php echo number_format($requirements_data[0]['required']); ?>
+                                        <?php echo esc_html(ucwords(str_replace('_', ' ', $requirements_data[0]['metric']))); ?>
+                                    </p>
                                 <?php endif; ?>
-                            </p>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
