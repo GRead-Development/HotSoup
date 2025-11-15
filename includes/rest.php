@@ -2,6 +2,16 @@
 /**
  * GRead REST API Endpoints - FIXED VERSION
  * Complete implementation with activity feed, blocking, reporting, and muting
+ *
+ * POINTS SYSTEM INTEGRATION:
+ * Points are automatically awarded through WordPress/BuddyPress action hooks:
+ * - Book publishing: 10 points (via 'publish_book' hook in pointy.php)
+ * - BuddyPress activities: 2 points (via 'bp_activity_posted_update' hook in pointy.php)
+ * - Comments: 2 points (via 'comment_post' hook in pointy.php)
+ * - Reviews: 5-25 points (via hs_submit_review() in hotsoup.php)
+ *
+ * These hooks fire automatically when actions occur via API endpoints, ensuring
+ * that iOS app users and other API consumers receive points for their contributions.
  */
 
 if (!defined('ABSPATH')) {
@@ -176,19 +186,35 @@ function gread_register_rest_routes() {
         'permission_callback' => 'gread_check_user_permission'
     ));
 
-    // --- Activity Feed Route ---
+    // --- Activity Feed Routes ---
     register_rest_route('gread/v1', '/activity', array(
-        'methods' => 'GET',
-        'callback' => 'gread_get_activity_feed',
-        'permission_callback' => '__return_true',
-        'args' => array(
-            'per_page' => array(
-                'default' => 20,
-                'sanitize_callback' => 'absint'
-            ),
-            'page' => array(
-                'default' => 1,
-                'sanitize_callback' => 'absint'
+        array(
+            'methods' => 'GET',
+            'callback' => 'gread_get_activity_feed',
+            'permission_callback' => '__return_true',
+            'args' => array(
+                'per_page' => array(
+                    'default' => 20,
+                    'sanitize_callback' => 'absint'
+                ),
+                'page' => array(
+                    'default' => 1,
+                    'sanitize_callback' => 'absint'
+                )
+            )
+        ),
+        array(
+            'methods' => 'POST',
+            'callback' => 'gread_post_activity',
+            'permission_callback' => 'gread_check_user_permission',
+            'args' => array(
+                'content' => array(
+                    'required' => true,
+                    'sanitize_callback' => 'sanitize_textarea_field',
+                    'validate_callback' => function($param) {
+                        return !empty(trim($param));
+                    }
+                )
             )
         )
     ));
@@ -530,6 +556,68 @@ function gread_get_activity_feed($request) {
         'total' => $activities['total'],
         'has_more' => $activities['total'] > ($page * $per_page)
     ));
+}
+
+/**
+ * Post a new activity update
+ *
+ * This endpoint allows users to post activities via the API (e.g., from the iOS app).
+ * Points are automatically awarded via the 'bp_activity_posted_update' hook in pointy.php
+ */
+function gread_post_activity($request) {
+    // Check if BuddyPress is active
+    if (!function_exists('bp_activity_add')) {
+        return new WP_Error('bp_not_active', 'BuddyPress not active', array('status' => 500));
+    }
+
+    $user_id = get_current_user_id();
+    $content = $request->get_param('content');
+
+    if (!$user_id) {
+        return new WP_Error('not_authenticated', 'User not authenticated', array('status' => 401));
+    }
+
+    if (empty(trim($content))) {
+        return new WP_Error('empty_content', 'Activity content cannot be empty', array('status' => 400));
+    }
+
+    // Add the activity
+    $activity_id = bp_activity_add(array(
+        'user_id' => $user_id,
+        'content' => $content,
+        'component' => 'hotsoup',
+        'type' => 'activity_update',
+        'recorded_time' => bp_core_current_time()
+    ));
+
+    if (!$activity_id) {
+        return new WP_Error('activity_failed', 'Failed to create activity', array('status' => 500));
+    }
+
+    // Get the created activity
+    $activity = bp_activity_get(array(
+        'in' => array($activity_id),
+        'display_comments' => false
+    ));
+
+    $response_data = array(
+        'success' => true,
+        'message' => 'Activity posted successfully',
+        'activity_id' => $activity_id,
+        'points_awarded' => 2 // Points are automatically awarded via hook
+    );
+
+    if (!empty($activity['activities'][0])) {
+        $act = $activity['activities'][0];
+        $response_data['activity'] = array(
+            'id' => $act->id,
+            'user_id' => $act->user_id,
+            'content' => $act->content,
+            'date' => $act->date_recorded
+        );
+    }
+
+    return rest_ensure_response($response_data);
 }
 
 // --- User Moderation Functions ---

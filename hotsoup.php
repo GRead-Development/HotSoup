@@ -16,6 +16,7 @@ if (!defined('ABSPATH'))
 
 require_once plugin_dir_path(__FILE__) . 'includes/api/mentions.php';
 require_once plugin_dir_path(__FILE__) . 'includes/api/achievements.php';
+require_once plugin_dir_path(__FILE__) . 'includes/api/statistics.php';
 require_once plugin_dir_path(__FILE__) . 'includes/admin/chimera.php';
 // The importer form
 require_once plugin_dir_path(__FILE__) . 'includes/importer.php';
@@ -33,6 +34,8 @@ require_once plugin_dir_path(__FILE__) . 'includes/search.php';
 require_once plugin_dir_path(__FILE__) . 'includes/security.php';
 // Track users' statistics.
 require_once plugin_dir_path(__FILE__) . 'includes/user_stats.php';
+// Statistics tracking and calculation functions
+require_once plugin_dir_path(__FILE__) . 'includes/statistics.php';
 // Administrator utilities for anything to do with points, crediting users, etc.
 require_once plugin_dir_path(__FILE__) . 'includes/pointy_utils.php';
 // Awards points to users for various contributions
@@ -61,6 +64,7 @@ require_once plugin_dir_path(__FILE__) . 'includes/profiles/hide_invitations.php
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/my_books.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/book_directory.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/total_books.php';
+require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/statistics_shortcodes.php';
 require_once plugin_dir_path(__FILE__) . 'includes/admin/tags_manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/widgets/site_activity.php';
 require_once plugin_dir_path(__FILE__) . 'includes/gid.php';
