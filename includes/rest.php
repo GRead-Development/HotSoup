@@ -192,8 +192,61 @@ function gread_register_rest_routes() {
             )
         )
     ));
-	
-	
+
+    // --- Citation Routes ---
+    register_rest_route('gread/v1', '/citations/create', array(
+        'methods' => 'POST',
+        'callback' => 'gread_create_citation',
+        'permission_callback' => 'gread_check_user_permission',
+        'args' => array(
+            'book_id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param);
+                }
+            ),
+            'format' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return in_array(strtolower($param), array('apa', 'mla', 'chicago', 'harvard'));
+                }
+            )
+        )
+    ));
+
+    register_rest_route('gread/v1', '/citations/(?P<book_id>\d+)', array(
+        'methods' => 'GET',
+        'callback' => 'gread_get_citations',
+        'permission_callback' => 'gread_check_user_permission'
+    ));
+
+    register_rest_route('gread/v1', '/citations/(?P<citation_id>\d+)', array(
+        'methods' => 'DELETE',
+        'callback' => 'gread_delete_citation',
+        'permission_callback' => 'gread_check_user_permission'
+    ));
+
+    register_rest_route('gread/v1', '/citations/preview', array(
+        'methods' => 'POST',
+        'callback' => 'gread_preview_citation',
+        'permission_callback' => 'gread_check_user_permission',
+        'args' => array(
+            'book_id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param);
+                }
+            ),
+            'format' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return in_array(strtolower($param), array('apa', 'mla', 'chicago', 'harvard'));
+                }
+            )
+        )
+    ));
+
+
 
 }
 add_action('rest_api_init', 'gread_register_rest_routes');
@@ -2120,3 +2173,129 @@ add_action('wp_ajax_search_book_tags', function()
 
 	wp_send_json($tags);
 });
+
+// --- Citation API Callbacks ---
+
+function gread_create_citation($request) {
+    if (!function_exists('hs_generate_citation') || !function_exists('hs_save_citation')) {
+        return new WP_Error('missing_function', 'Citation functions not loaded', array('status' => 500));
+    }
+
+    $user_id = get_current_user_id();
+    $book_id = intval($request['book_id']);
+    $format = strtolower(sanitize_text_field($request['format']));
+
+    // Verify user has this book in their library
+    global $wpdb;
+    $user_books_table = $wpdb->prefix . 'user_books';
+    $has_book = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $user_books_table WHERE user_id = %d AND book_id = %d",
+        $user_id,
+        $book_id
+    ));
+
+    if (!$has_book) {
+        return new WP_Error('book_not_in_library', 'You can only create citations for books in your library', array('status' => 403));
+    }
+
+    // Collect custom data
+    $custom_data = array();
+    $allowed_fields = array('pages', 'access_date', 'url', 'edition', 'publisher', 'city', 'translator', 'editor');
+
+    foreach ($allowed_fields as $field) {
+        $value = $request->get_param($field);
+        if (!empty($value)) {
+            $custom_data[$field] = sanitize_text_field($value);
+        }
+    }
+
+    // Generate citation
+    $citation_text = hs_generate_citation($book_id, $format, $custom_data);
+
+    if (is_wp_error($citation_text)) {
+        return $citation_text;
+    }
+
+    // Save citation
+    $citation_id = hs_save_citation($user_id, $book_id, $format, $citation_text, $custom_data);
+
+    if ($citation_id) {
+        return rest_ensure_response(array(
+            'success' => true,
+            'citation_id' => $citation_id,
+            'citation_text' => $citation_text,
+            'format' => $format
+        ));
+    } else {
+        return new WP_Error('save_failed', 'Failed to save citation', array('status' => 500));
+    }
+}
+
+function gread_get_citations($request) {
+    if (!function_exists('hs_get_user_citations')) {
+        return new WP_Error('missing_function', 'Citation functions not loaded', array('status' => 500));
+    }
+
+    $user_id = get_current_user_id();
+    $book_id = intval($request['book_id']);
+
+    $citations = hs_get_user_citations($user_id, $book_id);
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'citations' => $citations
+    ));
+}
+
+function gread_delete_citation($request) {
+    if (!function_exists('hs_delete_citation')) {
+        return new WP_Error('missing_function', 'Citation functions not loaded', array('status' => 500));
+    }
+
+    $user_id = get_current_user_id();
+    $citation_id = intval($request['citation_id']);
+
+    $result = hs_delete_citation($citation_id, $user_id);
+
+    if ($result) {
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'Citation deleted successfully'
+        ));
+    } else {
+        return new WP_Error('delete_failed', 'Failed to delete citation', array('status' => 500));
+    }
+}
+
+function gread_preview_citation($request) {
+    if (!function_exists('hs_generate_citation')) {
+        return new WP_Error('missing_function', 'Citation functions not loaded', array('status' => 500));
+    }
+
+    $book_id = intval($request['book_id']);
+    $format = strtolower(sanitize_text_field($request['format']));
+
+    // Collect custom data
+    $custom_data = array();
+    $allowed_fields = array('pages', 'access_date', 'url', 'edition', 'publisher', 'city', 'translator', 'editor');
+
+    foreach ($allowed_fields as $field) {
+        $value = $request->get_param($field);
+        if (!empty($value)) {
+            $custom_data[$field] = sanitize_text_field($value);
+        }
+    }
+
+    // Generate citation (preview only, not saved)
+    $citation_text = hs_generate_citation($book_id, $format, $custom_data);
+
+    if (is_wp_error($citation_text)) {
+        return $citation_text;
+    }
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'citation_text' => $citation_text,
+        'format' => $format
+    ));
+}

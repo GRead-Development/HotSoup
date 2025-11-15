@@ -67,8 +67,10 @@ require_once plugin_dir_path(__FILE__) . 'includes/gid.php';
 require_once plugin_dir_path(__FILE__) . 'includes/notes.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/note_form.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/notes_modal.php';
+require_once plugin_dir_path(__FILE__) . 'includes/citations.php';
 
 register_activation_hook(__FILE__, 'hs_gid_activate');
+register_activation_hook(__FILE__, 'hs_citations_activate');
 register_activation_hook( __FILE__, 'hs_achievements_create_table' );
 register_activation_hook(__FILE__, 'hs_reading_sessions_create_table');
 register_activation_hook(__FILE__, 'hs_themes_create_table');

@@ -434,4 +434,275 @@ jQuery(document).ready(function($) {
         });
     });
 
+    // === CITATION FUNCTIONALITY ===
+
+    // Open citation modal
+    $(document).on('click', '.hs-citation-button', function(e) {
+        e.preventDefault();
+        const button = $(this);
+        const bookId = button.data('book-id');
+        const bookTitle = button.data('book-title');
+        const bookAuthor = button.data('book-author');
+
+        // Set the book ID and display book info
+        $('#hs-citation-book-id').val(bookId);
+        $('.hs-citation-book-info').html('<strong>Creating citation for:</strong> "' + bookTitle + '" by ' + bookAuthor);
+
+        // Clear previous form data
+        $('#hs-citation-form')[0].reset();
+        $('#hs-citation-book-id').val(bookId); // Keep book ID after reset
+        $('#hs-citation-preview').html('');
+        $('#hs-citation-copy-btn').hide();
+        $('.hs-citation-feedback').text('');
+
+        // Load saved citations for this book
+        loadSavedCitations(bookId);
+
+        // Show the modal
+        $('#hs-citation-modal').fadeIn();
+    });
+
+    // Close citation modal
+    $('.hs-modal-close, #hs-citation-modal').on('click', function(e) {
+        if (e.target === this) {
+            $('#hs-citation-modal').fadeOut();
+        }
+    });
+
+    // Preview citation
+    $('#hs-citation-preview-btn').on('click', function(e) {
+        e.preventDefault();
+        const button = $(this);
+        const format = $('#hs-citation-format').val();
+        const bookId = $('#hs-citation-book-id').val();
+
+        if (!format) {
+            alert('Please select a citation format first.');
+            return;
+        }
+
+        const formData = {
+            action: 'hs_regenerate_citation',
+            nonce: hs_ajax.nonce,
+            book_id: bookId,
+            format: format,
+            pages: $('#hs-citation-pages').val(),
+            publisher: $('#hs-citation-publisher').val(),
+            city: $('#hs-citation-city').val(),
+            edition: $('#hs-citation-edition').val(),
+            translator: $('#hs-citation-translator').val(),
+            editor: $('#hs-citation-editor').val(),
+            url: $('#hs-citation-url').val(),
+            access_date: $('#hs-citation-access-date').val()
+        };
+
+        $.ajax({
+            url: hs_ajax.ajax_url,
+            type: 'POST',
+            data: formData,
+            beforeSend: function() {
+                button.text('Generating...').prop('disabled', true);
+                $('#hs-citation-preview').html('<p class="loading">Generating citation...</p>');
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#hs-citation-preview').html('<div class="citation-text">' + response.data.citation_text + '</div>');
+                    $('#hs-citation-copy-btn').show();
+                } else {
+                    $('#hs-citation-preview').html('<p class="error">Error: ' + response.data.message + '</p>');
+                }
+            },
+            error: function() {
+                $('#hs-citation-preview').html('<p class="error">Failed to generate citation.</p>');
+            },
+            complete: function() {
+                button.text('Preview Citation').prop('disabled', false);
+            }
+        });
+    });
+
+    // Save citation
+    $('#hs-citation-form').on('submit', function(e) {
+        e.preventDefault();
+        const form = $(this);
+        const feedback = $('.hs-citation-feedback');
+        const format = $('#hs-citation-format').val();
+        const bookId = $('#hs-citation-book-id').val();
+
+        if (!format) {
+            alert('Please select a citation format.');
+            return;
+        }
+
+        const formData = {
+            action: 'hs_create_citation',
+            nonce: hs_ajax.nonce,
+            book_id: bookId,
+            format: format,
+            pages: $('#hs-citation-pages').val(),
+            publisher: $('#hs-citation-publisher').val(),
+            city: $('#hs-citation-city').val(),
+            edition: $('#hs-citation-edition').val(),
+            translator: $('#hs-citation-translator').val(),
+            editor: $('#hs-citation-editor').val(),
+            url: $('#hs-citation-url').val(),
+            access_date: $('#hs-citation-access-date').val()
+        };
+
+        $.ajax({
+            url: hs_ajax.ajax_url,
+            type: 'POST',
+            data: formData,
+            beforeSend: function() {
+                feedback.text('Saving citation...').css('color', '#333');
+            },
+            success: function(response) {
+                if (response.success) {
+                    feedback.text('Citation saved successfully!').css('color', 'green');
+
+                    // Update preview with the saved citation
+                    $('#hs-citation-preview').html('<div class="citation-text">' + response.data.citation_text + '</div>');
+                    $('#hs-citation-copy-btn').show();
+
+                    // Reload saved citations
+                    loadSavedCitations(bookId);
+
+                    // Clear feedback after 3 seconds
+                    setTimeout(function() {
+                        feedback.text('');
+                    }, 3000);
+                } else {
+                    feedback.text('Error: ' + response.data.message).css('color', 'red');
+                }
+            },
+            error: function() {
+                feedback.text('Failed to save citation.').css('color', 'red');
+            }
+        });
+    });
+
+    // Copy citation to clipboard
+    $('#hs-citation-copy-btn').on('click', function(e) {
+        e.preventDefault();
+        const citationText = $('#hs-citation-preview .citation-text').text();
+
+        // Create a temporary textarea to copy from
+        const tempTextarea = $('<textarea>');
+        tempTextarea.val(citationText);
+        $('body').append(tempTextarea);
+        tempTextarea.select();
+
+        try {
+            document.execCommand('copy');
+            $(this).text('Copied!').css('background-color', '#28a745');
+            setTimeout(() => {
+                $(this).text('Copy to Clipboard').css('background-color', '');
+            }, 2000);
+        } catch (err) {
+            alert('Failed to copy citation. Please copy it manually.');
+        }
+
+        tempTextarea.remove();
+    });
+
+    // Load saved citations for a book
+    function loadSavedCitations(bookId) {
+        $.ajax({
+            url: hs_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'hs_get_citations',
+                nonce: hs_ajax.nonce,
+                book_id: bookId
+            },
+            success: function(response) {
+                if (response.success && response.data.citations && response.data.citations.length > 0) {
+                    let html = '<ul class="hs-citations-list">';
+                    response.data.citations.forEach(function(citation) {
+                        html += '<li class="hs-citation-item">';
+                        html += '<div class="hs-citation-header">';
+                        html += '<strong>' + citation.citation_format.toUpperCase() + '</strong>';
+                        html += '<span class="hs-citation-date">' + citation.date_created + '</span>';
+                        html += '</div>';
+                        html += '<div class="hs-citation-content">' + citation.citation_text + '</div>';
+                        html += '<div class="hs-citation-item-actions">';
+                        html += '<button class="hs-button hs-button-small hs-copy-saved-citation" data-citation-text="' + $('<div>').text(citation.citation_text).html() + '">Copy</button>';
+                        html += '<button class="hs-button hs-button-small hs-button-danger hs-delete-citation" data-citation-id="' + citation.id + '">Delete</button>';
+                        html += '</div>';
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                    $('#hs-saved-citations-list').html(html);
+                } else {
+                    $('#hs-saved-citations-list').html('<p class="hs-no-citations">No saved citations yet. Create one above!</p>');
+                }
+            },
+            error: function() {
+                $('#hs-saved-citations-list').html('<p class="error">Failed to load citations.</p>');
+            }
+        });
+    }
+
+    // Copy saved citation
+    $(document).on('click', '.hs-copy-saved-citation', function(e) {
+        e.preventDefault();
+        const button = $(this);
+        const citationText = button.data('citation-text');
+
+        const tempTextarea = $('<textarea>');
+        tempTextarea.val($('<div>').html(citationText).text()); // Decode HTML entities
+        $('body').append(tempTextarea);
+        tempTextarea.select();
+
+        try {
+            document.execCommand('copy');
+            button.text('Copied!').css('background-color', '#28a745');
+            setTimeout(() => {
+                button.text('Copy').css('background-color', '');
+            }, 2000);
+        } catch (err) {
+            alert('Failed to copy citation.');
+        }
+
+        tempTextarea.remove();
+    });
+
+    // Delete citation
+    $(document).on('click', '.hs-delete-citation', function(e) {
+        e.preventDefault();
+        if (!confirm('Are you sure you want to delete this citation?')) {
+            return;
+        }
+
+        const button = $(this);
+        const citationId = button.data('citation-id');
+        const bookId = $('#hs-citation-book-id').val();
+
+        $.ajax({
+            url: hs_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'hs_delete_citation',
+                nonce: hs_ajax.nonce,
+                citation_id: citationId
+            },
+            beforeSend: function() {
+                button.text('Deleting...').prop('disabled', true);
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Reload citations list
+                    loadSavedCitations(bookId);
+                } else {
+                    alert('Failed to delete citation: ' + response.data.message);
+                    button.text('Delete').prop('disabled', false);
+                }
+            },
+            error: function() {
+                alert('Failed to delete citation.');
+                button.text('Delete').prop('disabled', false);
+            }
+        });
+    });
+
 }); // <-- This is the one, final closing bracket for jQuery(document).ready()

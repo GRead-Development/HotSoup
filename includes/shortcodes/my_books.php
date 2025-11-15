@@ -172,6 +172,7 @@ function hs_my_books_shortcode($atts)
         $book_html .= '<div class="hs-button-group">';
         $book_html .= '<button class="hs-button hs-remove-book" data-book-id="' . esc_attr($book_entry->book_id) . '">Remove</button>';
         $book_html .= '<button class="hs-button hs-notes-button" data-book-id="' . esc_attr($book_entry->book_id) . '" data-book-title="' . esc_attr($book->post_title) . '">View & Manage Notes</button>';
+        $book_html .= '<button class="hs-button hs-citation-button" data-book-id="' . esc_attr($book_entry->book_id) . '" data-book-title="' . esc_attr($book->post_title) . '" data-book-author="' . esc_attr($author) . '">Create Citation</button>';
         $book_html .= '</div>';
 
 
@@ -302,6 +303,101 @@ function hs_my_books_shortcode($atts)
             $output .= '</details>';
         }
     }
+
+    // Add Citation Modal
+    $output .= '<div id="hs-citation-modal" class="hs-modal" style="display:none;">';
+    $output .= '<div class="hs-modal-content">';
+    $output .= '<span class="hs-modal-close">&times;</span>';
+    $output .= '<h2>Create Citation</h2>';
+    $output .= '<p class="hs-citation-book-info"></p>';
+
+    $output .= '<form id="hs-citation-form">';
+    $output .= '<input type="hidden" id="hs-citation-book-id" name="book_id">';
+
+    // Citation Format Selector
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-format">Citation Format:</label>';
+    $output .= '<select id="hs-citation-format" name="format" required>';
+    $output .= '<option value="">Select a format...</option>';
+    $output .= '<option value="apa">APA (American Psychological Association)</option>';
+    $output .= '<option value="mla">MLA (Modern Language Association)</option>';
+    $output .= '<option value="chicago">Chicago/Turabian</option>';
+    $output .= '<option value="harvard">Harvard</option>';
+    $output .= '</select>';
+    $output .= '</div>';
+
+    // Optional citation details
+    $output .= '<div class="hs-citation-optional-fields">';
+    $output .= '<h3>Optional Details</h3>';
+    $output .= '<p class="hs-field-help">Add additional information to make your citation more complete and accurate.</p>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-pages">Page(s) Cited:</label>';
+    $output .= '<input type="text" id="hs-citation-pages" name="pages" placeholder="e.g., 23, 45-67, 102">';
+    $output .= '<span class="hs-field-hint">Specific page numbers you\'re citing</span>';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-publisher">Publisher:</label>';
+    $output .= '<input type="text" id="hs-citation-publisher" name="publisher" placeholder="e.g., Penguin Books">';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-city">City of Publication:</label>';
+    $output .= '<input type="text" id="hs-citation-city" name="city" placeholder="e.g., New York">';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-edition">Edition:</label>';
+    $output .= '<input type="text" id="hs-citation-edition" name="edition" placeholder="e.g., 2nd ed.">';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-translator">Translator:</label>';
+    $output .= '<input type="text" id="hs-citation-translator" name="translator" placeholder="e.g., John Doe">';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-editor">Editor:</label>';
+    $output .= '<input type="text" id="hs-citation-editor" name="editor" placeholder="e.g., Jane Smith">';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-url">URL (for online sources):</label>';
+    $output .= '<input type="url" id="hs-citation-url" name="url" placeholder="https://example.com">';
+    $output .= '</div>';
+
+    $output .= '<div class="hs-citation-field">';
+    $output .= '<label for="hs-citation-access-date">Access Date (for online sources):</label>';
+    $output .= '<input type="text" id="hs-citation-access-date" name="access_date" placeholder="e.g., January 15, 2025">';
+    $output .= '</div>';
+
+    $output .= '</div>'; // end optional fields
+
+    // Preview area
+    $output .= '<div class="hs-citation-preview-section">';
+    $output .= '<h3>Citation Preview</h3>';
+    $output .= '<button type="button" id="hs-citation-preview-btn" class="hs-button">Preview Citation</button>';
+    $output .= '<div id="hs-citation-preview" class="hs-citation-preview"></div>';
+    $output .= '</div>';
+
+    // Submit buttons
+    $output .= '<div class="hs-citation-actions">';
+    $output .= '<button type="submit" class="hs-button hs-button-primary">Save Citation</button>';
+    $output .= '<button type="button" id="hs-citation-copy-btn" class="hs-button" style="display:none;">Copy to Clipboard</button>';
+    $output .= '<span class="hs-citation-feedback"></span>';
+    $output .= '</div>';
+
+    $output .= '</form>';
+
+    // Saved citations list
+    $output .= '<div class="hs-saved-citations-section">';
+    $output .= '<h3>Your Saved Citations</h3>';
+    $output .= '<div id="hs-saved-citations-list"></div>';
+    $output .= '</div>';
+
+    $output .= '</div>'; // end modal-content
+    $output .= '</div>'; // end modal
 
     $output .= '</div>';
     return $output;
