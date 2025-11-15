@@ -319,16 +319,52 @@ function gr_submission_shortcode() {
 add_shortcode('submission_form', 'gr_submission_shortcode');
 
 
-// Add an ISBN to a book post
-function hs_add_book_isbn($book_id, $isbn, $edition = '', $year = null)
+// =============================================================================
+// SECTION 5: Multiple ISBN Support (GID Integration)
+// =============================================================================
+
+// Add an ISBN to a book post (supports multiple ISBNs per book)
+function hs_add_book_isbn($post_id, $isbn, $edition = '', $year = null, $is_primary = false)
 {
 	global $wpdb;
-	$wpdb -> insert( $wpdb -> prefix . 'hs_book_isbns', array(
-		'book_id' => intval($book_id),
-		'isbn' => sanitize_text_field($edition),
+
+	// Get or create GID for this book
+	$gid = hs_get_or_create_gid($post_id);
+
+	// Clean the ISBN
+	$isbn = sanitize_text_field($isbn);
+
+	// Check if this ISBN already exists
+	$exists = $wpdb -> get_var($wpdb -> prepare(
+		"SELECT id FROM {$wpdb -> prefix}hs_book_isbns WHERE isbn = %s",
+		$isbn
+	));
+
+	if ($exists) {
+		return false; // ISBN already exists
+	}
+
+	// If this is set as primary, unset other primary ISBNs for this GID
+	if ($is_primary) {
+		$wpdb -> update(
+			$wpdb -> prefix . 'hs_book_isbns',
+			array('is_primary' => 0),
+			array('gid' => $gid)
+		);
+	}
+
+	// Insert the ISBN
+	$result = $wpdb -> insert( $wpdb -> prefix . 'hs_book_isbns', array(
+		'gid' => intval($gid),
+		'post_id' => intval($post_id),
+		'isbn' => $isbn,
 		'edition' => sanitize_text_field($edition),
 		'publication_year' => $year ? intval($year) : null,
+		'is_primary' => $is_primary ? 1 : 0,
+		'created_at' => current_time('mysql')
 	));
+
+	return $result !== false;
 }
 
 
@@ -336,19 +372,123 @@ function hs_add_book_isbn($book_id, $isbn, $edition = '', $year = null)
 function hs_get_book_by_isbn($isbn)
 {
 	global $wpdb;
+	$isbn = sanitize_text_field($isbn);
+
 	return $wpdb -> get_row($wpdb -> prepare(
-		"SELECT book_id FROM {$wpdb -> prefix}hs_book_isbns WHERE isbn = %s LIMIT 1",
-		sanitize_text_field($isbn)
+		"SELECT post_id, gid FROM {$wpdb -> prefix}hs_book_isbns WHERE isbn = %s LIMIT 1",
+		$isbn
 	));
 }
 
 
-// Retrieve all ISBNS for a book post
-function hs_get_book_isbns($book_id)
+// Retrieve all ISBNs for a book post
+function hs_get_book_isbns($post_id)
 {
 	global $wpdb;
-	return $wpdb -> get_col($wpdb -> prepare(
-		"SELECT isbn FROM {$wpdb -> prefix}hs_book_isbns WHERE book_id = %d",
-		intval($book_id)
+
+	// Get the GID for this post
+	$gid = hs_get_gid($post_id);
+	if (!$gid) {
+		return array();
+	}
+
+	// Get all ISBNs for this GID
+	return $wpdb -> get_results($wpdb -> prepare(
+		"SELECT isbn, edition, publication_year, is_primary, post_id
+		FROM {$wpdb -> prefix}hs_book_isbns
+		WHERE gid = %d
+		ORDER BY is_primary DESC, created_at ASC",
+		intval($gid)
 	));
+}
+
+
+// Get all ISBNs for a GID (useful for merging)
+function hs_get_isbns_by_gid($gid)
+{
+	global $wpdb;
+
+	return $wpdb -> get_results($wpdb -> prepare(
+		"SELECT isbn, edition, publication_year, is_primary, post_id
+		FROM {$wpdb -> prefix}hs_book_isbns
+		WHERE gid = %d
+		ORDER BY is_primary DESC, created_at ASC",
+		intval($gid)
+	));
+}
+
+
+// Get the primary ISBN for a book
+function hs_get_primary_isbn($post_id)
+{
+	global $wpdb;
+
+	// Get the GID for this post
+	$gid = hs_get_gid($post_id);
+	if (!$gid) {
+		// Fallback to ACF field
+		return get_field('book_isbn', $post_id);
+	}
+
+	// Get the primary ISBN
+	$result = $wpdb -> get_var($wpdb -> prepare(
+		"SELECT isbn FROM {$wpdb -> prefix}hs_book_isbns
+		WHERE gid = %d AND is_primary = 1
+		LIMIT 1",
+		intval($gid)
+	));
+
+	// If no primary, get the first ISBN
+	if (!$result) {
+		$result = $wpdb -> get_var($wpdb -> prepare(
+			"SELECT isbn FROM {$wpdb -> prefix}hs_book_isbns
+			WHERE gid = %d
+			ORDER BY created_at ASC
+			LIMIT 1",
+			intval($gid)
+		));
+	}
+
+	return $result ? $result : get_field('book_isbn', $post_id);
+}
+
+
+// Set an ISBN as primary for a book
+function hs_set_primary_isbn($post_id, $isbn)
+{
+	global $wpdb;
+
+	// Get the GID for this post
+	$gid = hs_get_gid($post_id);
+	if (!$gid) {
+		return false;
+	}
+
+	// Unset all primary flags for this GID
+	$wpdb -> update(
+		$wpdb -> prefix . 'hs_book_isbns',
+		array('is_primary' => 0),
+		array('gid' => $gid)
+	);
+
+	// Set the new primary
+	$result = $wpdb -> update(
+		$wpdb -> prefix . 'hs_book_isbns',
+		array('is_primary' => 1),
+		array('gid' => $gid, 'isbn' => sanitize_text_field($isbn))
+	);
+
+	return $result !== false;
+}
+
+
+// Remove an ISBN from a book
+function hs_remove_book_isbn($isbn)
+{
+	global $wpdb;
+
+	return $wpdb -> delete(
+		$wpdb -> prefix . 'hs_book_isbns',
+		array('isbn' => sanitize_text_field($isbn))
+	);
 }

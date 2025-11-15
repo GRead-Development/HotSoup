@@ -192,8 +192,91 @@ function gread_register_rest_routes() {
             )
         )
     ));
-	
-	
+
+    // --- ISBN Management Routes ---
+    register_rest_route('gread/v1', '/books/(?P<id>\d+)/isbns', array(
+        'methods' => 'GET',
+        'callback' => 'gread_get_book_isbns',
+        'permission_callback' => '__return_true',
+        'args' => array(
+            'id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param);
+                }
+            )
+        )
+    ));
+
+    register_rest_route('gread/v1', '/books/(?P<id>\d+)/isbns', array(
+        'methods' => 'POST',
+        'callback' => 'gread_add_book_isbn',
+        'permission_callback' => function() {
+            return current_user_can('edit_posts');
+        },
+        'args' => array(
+            'id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param);
+                }
+            ),
+            'isbn' => array(
+                'required' => true,
+                'sanitize_callback' => 'sanitize_text_field'
+            ),
+            'edition' => array(
+                'default' => '',
+                'sanitize_callback' => 'sanitize_text_field'
+            ),
+            'publication_year' => array(
+                'default' => null,
+                'validate_callback' => function($param) {
+                    return is_null($param) || is_numeric($param);
+                }
+            ),
+            'is_primary' => array(
+                'default' => false,
+                'validate_callback' => function($param) {
+                    return is_bool($param);
+                }
+            )
+        )
+    ));
+
+    register_rest_route('gread/v1', '/books/isbn/(?P<isbn>[a-zA-Z0-9-]+)', array(
+        'methods' => 'DELETE',
+        'callback' => 'gread_remove_book_isbn',
+        'permission_callback' => function() {
+            return current_user_can('edit_posts');
+        },
+        'args' => array(
+            'isbn' => array(
+                'required' => true,
+                'sanitize_callback' => 'sanitize_text_field'
+            )
+        )
+    ));
+
+    register_rest_route('gread/v1', '/books/(?P<id>\d+)/isbns/primary', array(
+        'methods' => 'PUT',
+        'callback' => 'gread_set_primary_isbn',
+        'permission_callback' => function() {
+            return current_user_can('edit_posts');
+        },
+        'args' => array(
+            'id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param);
+                }
+            ),
+            'isbn' => array(
+                'required' => true,
+                'sanitize_callback' => 'sanitize_text_field'
+            )
+        )
+    ));
 
 }
 add_action('rest_api_init', 'gread_register_rest_routes');
@@ -2105,6 +2188,117 @@ add_filter( 'bp_rest_activity_prepare_value', function( $response, $activity, $r
     }
     return $response;
 }, 10, 3 );
+
+
+// --- ISBN Management Functions ---
+
+function gread_get_book_isbns($request) {
+    $book_id = intval($request['id']);
+
+    // Check if book exists
+    $book = get_post($book_id);
+    if (!$book || $book->post_type !== 'book') {
+        return new WP_Error('invalid_book', 'Invalid book ID', array('status' => 404));
+    }
+
+    $isbns = hs_get_book_isbns($book_id);
+
+    $result = array();
+    foreach ($isbns as $isbn) {
+        $result[] = array(
+            'isbn' => $isbn->isbn,
+            'edition' => $isbn->edition,
+            'publication_year' => $isbn->publication_year ? intval($isbn->publication_year) : null,
+            'is_primary' => (bool) $isbn->is_primary,
+            'post_id' => intval($isbn->post_id)
+        );
+    }
+
+    return rest_ensure_response(array(
+        'book_id' => $book_id,
+        'isbns' => $result
+    ));
+}
+
+function gread_add_book_isbn($request) {
+    $book_id = intval($request['id']);
+    $isbn = sanitize_text_field($request['isbn']);
+    $edition = $request->get_param('edition') ? sanitize_text_field($request['edition']) : '';
+    $year = $request->get_param('publication_year');
+    $is_primary = $request->get_param('is_primary') ? (bool) $request['is_primary'] : false;
+
+    // Check if book exists
+    $book = get_post($book_id);
+    if (!$book || $book->post_type !== 'book') {
+        return new WP_Error('invalid_book', 'Invalid book ID', array('status' => 404));
+    }
+
+    // Add the ISBN
+    $result = hs_add_book_isbn($book_id, $isbn, $edition, $year, $is_primary);
+
+    if (!$result) {
+        return new WP_Error('isbn_exists', 'ISBN already exists in the database', array('status' => 400));
+    }
+
+    // Update the search index
+    hs_search_add_to_index($book_id);
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'message' => 'ISBN added successfully',
+        'isbn' => $isbn
+    ));
+}
+
+function gread_remove_book_isbn($request) {
+    $isbn = sanitize_text_field($request['isbn']);
+
+    // Get the book ID before deletion (for updating search index)
+    $isbn_data = hs_get_book_by_isbn($isbn);
+
+    if (!$isbn_data) {
+        return new WP_Error('isbn_not_found', 'ISBN not found', array('status' => 404));
+    }
+
+    $result = hs_remove_book_isbn($isbn);
+
+    if ($result === false) {
+        return new WP_Error('delete_failed', 'Failed to delete ISBN', array('status' => 500));
+    }
+
+    // Update the search index
+    if ($isbn_data && isset($isbn_data->post_id)) {
+        hs_search_add_to_index($isbn_data->post_id);
+    }
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'message' => 'ISBN removed successfully'
+    ));
+}
+
+function gread_set_primary_isbn($request) {
+    $book_id = intval($request['id']);
+    $isbn = sanitize_text_field($request['isbn']);
+
+    // Check if book exists
+    $book = get_post($book_id);
+    if (!$book || $book->post_type !== 'book') {
+        return new WP_Error('invalid_book', 'Invalid book ID', array('status' => 404));
+    }
+
+    $result = hs_set_primary_isbn($book_id, $isbn);
+
+    if (!$result) {
+        return new WP_Error('set_primary_failed', 'Failed to set primary ISBN', array('status' => 500));
+    }
+
+    return rest_ensure_response(array(
+        'success' => true,
+        'message' => 'Primary ISBN set successfully',
+        'isbn' => $isbn
+    ));
+}
 
 
 // AJAX handler for searching book tags

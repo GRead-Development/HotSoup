@@ -25,23 +25,50 @@ function hs_search_add_to_index($post_id)
         return;
     }
 
+	// Delete existing entries for this book
+	$wpdb->delete($table_name, ['book_id' => $post_id], ['%d']);
+
 	// Retrieve metadata
 	$author = get_post_meta($post_id, 'book_author', true);
-	$isbn = get_post_meta($post_id, 'book_isbn', true);
 	$permalink = get_permalink($post_id);
 	$title = get_post_field('post_title', $post_id);
 
-    $wpdb->replace(
-        $table_name,
-        [
-            'book_id'   => $post_id,
-            'title'     => html_entity_decode($title, ENT_QUOTES, 'UTF-8'),
-            'author'    => html_entity_decode($author, ENT_QUOTES, 'UTF-8'),
-            'isbn'      => html_entity_decode($isbn, ENT_QUOTES, 'UTF-8'),
-            'permalink' => $permalink
-        ],
-        ['%d', '%s', '%s', '%s', '%s']
-    );
+	// Get all ISBNs for this book (supports multiple ISBNs)
+	$isbns = hs_get_book_isbns($post_id);
+
+	if (!empty($isbns) && is_array($isbns)) {
+		// Index each ISBN separately for better search
+		foreach ($isbns as $isbn_obj) {
+			$isbn = is_object($isbn_obj) ? $isbn_obj->isbn : $isbn_obj;
+
+			$wpdb->insert(
+				$table_name,
+				[
+					'book_id'   => $post_id,
+					'title'     => html_entity_decode($title, ENT_QUOTES, 'UTF-8'),
+					'author'    => html_entity_decode($author, ENT_QUOTES, 'UTF-8'),
+					'isbn'      => html_entity_decode($isbn, ENT_QUOTES, 'UTF-8'),
+					'permalink' => $permalink
+				],
+				['%d', '%s', '%s', '%s', '%s']
+			);
+		}
+	} else {
+		// Fallback to ACF field if no ISBNs in new table
+		$isbn = get_post_meta($post_id, 'book_isbn', true);
+
+		$wpdb->insert(
+			$table_name,
+			[
+				'book_id'   => $post_id,
+				'title'     => html_entity_decode($title, ENT_QUOTES, 'UTF-8'),
+				'author'    => html_entity_decode($author, ENT_QUOTES, 'UTF-8'),
+				'isbn'      => html_entity_decode($isbn, ENT_QUOTES, 'UTF-8'),
+				'permalink' => $permalink
+			],
+			['%d', '%s', '%s', '%s', '%s']
+		);
+	}
 }
 add_action('save_post_book', 'hs_search_add_to_index', 20);
 //add_action('updated_post_meta', 'hs_search_update_on_meta_change', 10, 4);
@@ -322,40 +349,3 @@ function hs_search_handle_manual_activation()
 add_action('admin_init', 'hs_search_handle_manual_activation');
 
 
-// Index all ISBNs for a book in the search table, called whenever a book is saved
-function hs_search_index_all_isbns($post_id)
-{
-	if (get_post_type($post_id) !== 'book' || wp_is_post_revision($post_id) || wp_is_post_autosave($post_id))
-	{
-		return;
-	}
-
-	global $wpdb;
-	$book = get_post($post_id);
-	$table_name = HS_SEARCH_TABLE;
-
-	if ($book -> post_status !== 'publish')
-	{
-		return;
-	}
-
-
-	// Retrieve all ISBNs for a book
-	$isbns = hs_get_book_isbns($post_id);
-	$title = html_entity_decode(get_post_field('post_title', $post_id), ENT_QUOTES, 'UTF-8');
-	$author = html_entity_decode(get_post_meta($post_id, 'book_author', true), ENT_QUOTES, 'UTF-8');
-	$permalink = get_permalink($post_id);
-
-	// Insert an entry for each ISBN
-	foreach($isbns as $isbn)
-	{
-		$wpdb -> insert($table_name, array(
-			'book_id' => intval($post_id),
-			'title' => $title,
-			'author' => $author,
-			'isbn' => html_entity_decode($isbn, ENT_QUOTES, 'UTF-8'),
-			'permalink' => $permalink,
-		), array('%d', '%s', '%s', '%s', '%s'));
-	}
-}
-add_action('hs_isbn_added', 'hs_search_index_all_isbns', 21);
