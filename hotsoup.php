@@ -39,12 +39,16 @@ require_once plugin_dir_path(__FILE__) . 'includes/pointy_utils.php';
 require_once plugin_dir_path(__FILE__) . 'includes/pointy.php';
 // Manages the different unlockable items on GRead.
 require_once plugin_dir_path(__FILE__) . 'includes/unlockables_manager.php';
+// Font unlockables integration
+require_once plugin_dir_path(__FILE__) . 'includes/unlockables/fonts.php';
 // Administrative utilities for managing inaccuracy reports.
 require_once plugin_dir_path(__FILE__) . 'includes/inaccuracy_manager.php';
 // Book tagging
 require_once plugin_dir_path(__FILE__) . 'includes/tagging.php';
 // Administrative utilities for managing themes for GRead
 require_once plugin_dir_path(__FILE__) . 'includes/admin/theme_manager.php';
+// Administrative utilities for managing fonts for GRead
+require_once plugin_dir_path(__FILE__) . 'includes/admin/font_manager.php';
 // Administrative utilities for adding GRead's identifiers to the books in the book database
 require_once plugin_dir_path(__FILE__) . 'includes/admin/index_dbs.php';
 require_once plugin_dir_path(__FILE__) . 'includes/reading_sessions.php';
@@ -72,6 +76,7 @@ register_activation_hook(__FILE__, 'hs_gid_activate');
 register_activation_hook( __FILE__, 'hs_achievements_create_table' );
 register_activation_hook(__FILE__, 'hs_reading_sessions_create_table');
 register_activation_hook(__FILE__, 'hs_themes_create_table');
+register_activation_hook(__FILE__, 'hs_create_fonts_table');
 register_activation_hook(__FILE__, 'hs_moderation_create_tables');
 register_activation_hook(__FILE__, 'support_tickets_create_table');
 register_activation_hook(__FILE__, 'hs_book_tags_activate');
@@ -182,6 +187,22 @@ function ol_enqueue_modal_assets()
 			[
 				'ajax_url' => admin_url('admin-ajax.php'),
 			]
+		);
+
+		// Enqueue font selector
+		wp_enqueue_script(
+			'hs-fonts-script',
+			$plugin_url . 'js/unlockables/font-selector.js',
+			['jquery'],
+			'1.0.0',
+			true
+		);
+
+		wp_enqueue_style(
+			'hs-fonts-style',
+			$plugin_url . 'css/hs-fonts.css',
+			[],
+			'1.0.0'
 		);
 	}
 }
