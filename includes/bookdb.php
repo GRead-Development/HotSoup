@@ -325,7 +325,7 @@ function hs_add_book_isbn($book_id, $isbn, $edition = '', $year = null, $is_prim
 	global $wpdb;
 
 	// Get or create a GID
-	$gid = hs_get_or_create_gid($post_id);
+	$gid = hs_get_or_create_gid($book_id);
 	// Clean ISBN
 	$isbn = sanitize_text_field($isbn);
 
@@ -351,11 +351,10 @@ function hs_add_book_isbn($book_id, $isbn, $edition = '', $year = null, $is_prim
 		);
 	}
 
-	//
-
-	$wpdb -> insert( $wpdb -> prefix . 'hs_book_isbns', array(
+	// Insert the ISBN
+	$result = $wpdb -> insert( $wpdb -> prefix . 'hs_book_isbns', array(
 		'gid' => intval($gid),
-		'post_id' => intval($post_id),
+		'post_id' => intval($book_id),
 		'isbn' => $isbn,
 		'edition' => sanitize_text_field($edition),
 		'publication_year' => $year ? intval($year) : null,

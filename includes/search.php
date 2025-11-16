@@ -32,6 +32,7 @@ function hs_search_add_to_index($post_id)
 	$author = get_post_meta($post_id, 'book_author', true);
 	$isbn = get_post_meta($post_id, 'book_isbn', true);
 	$title = get_post_field('post_title', $post_id);
+	$permalink = get_permalink($post_id);
 
 	// Get all ISBNs for given book
 	$isbns = hs_get_book_isbns($post_id);
@@ -65,7 +66,7 @@ function hs_search_add_to_index($post_id)
 		$wpdb -> insert(
 		$table_name,
 		[
-			'book_name' => $post_id,
+			'book_id' => $post_id,
 			'title' => html_entity_decode($title, ENT_QUOTES, 'UTF-8'),
 			'author' => html_entity_decode($author, ENT_QUOTES, 'UTF-8'),
 			'isbn' => html_entity_decode($isbn, ENT_QUOTES, 'UTF-8'),
