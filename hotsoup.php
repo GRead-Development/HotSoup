@@ -61,12 +61,17 @@ require_once plugin_dir_path(__FILE__) . 'includes/profiles/hide_invitations.php
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/my_books.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/book_directory.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/total_books.php';
+require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/author_books.php';
 require_once plugin_dir_path(__FILE__) . 'includes/admin/tags_manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/widgets/site_activity.php';
 require_once plugin_dir_path(__FILE__) . 'includes/gid.php';
 require_once plugin_dir_path(__FILE__) . 'includes/notes.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/note_form.php';
 require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/notes_modal.php';
+// Author and Series ID management system
+require_once plugin_dir_path(__FILE__) . 'includes/authors_series.php';
+require_once plugin_dir_path(__FILE__) . 'includes/admin/authors_series_manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/authors_series_display.php';
 
 register_activation_hook(__FILE__, 'hs_gid_activate');
 register_activation_hook( __FILE__, 'hs_achievements_create_table' );
@@ -77,6 +82,13 @@ register_activation_hook(__FILE__, 'support_tickets_create_table');
 register_activation_hook(__FILE__, 'hs_book_tags_activate');
 register_activation_hook(__FILE__, 'hs_book_tags_create_table');
 register_activation_hook(__FILE__, 'hs_book_notes_activate');
+// Author and Series ID system activation hooks
+register_activation_hook(__FILE__, 'hs_authors_create_table');
+register_activation_hook(__FILE__, 'hs_author_aliases_create_table');
+register_activation_hook(__FILE__, 'hs_book_authors_create_table');
+register_activation_hook(__FILE__, 'hs_series_create_table');
+register_activation_hook(__FILE__, 'hs_book_series_create_table');
+register_activation_hook(__FILE__, 'hs_author_merges_create_table');
 
 // On activation, set up the reviews table
 function hs_reviews_activate()
@@ -242,6 +254,12 @@ add_action('save_post_book', function($post_id)
 		'pages' => $pages,
 		'permalink' => get_permalink($post_id),
 	), array('%d', '%s', '%s', '%s', '%d', '%s'));
+
+	// Process authors for the author ID system
+	// This will only create relationships if they don't exist (preserves manual corrections)
+	if (!empty($author)) {
+		hs_process_book_authors($post_id, $author);
+	}
 }, 10, 1);
 
 function hs_support_tickets_create_table()
