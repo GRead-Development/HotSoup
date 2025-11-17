@@ -191,6 +191,15 @@ add_action('wp_enqueue_scripts', 'ol_enqueue_modal_assets');
 // MUST be in this file
 register_activation_hook( __FILE__, 'hs_inaccuracies_create_table' );
 
+// Stub function to prevent fatal errors from cached activation hooks
+// This function was removed but may still be cached in WordPress database
+function hs_book_series_create_table()
+{
+	// Function left empty intentionally - feature was removed
+	// This prevents fatal errors during plugin activation
+	return;
+}
+
 // When activated, create the table to use
 function hs_activate()
 {
@@ -243,31 +252,6 @@ add_action('save_post_book', function($post_id)
 		'permalink' => get_permalink($post_id),
 	), array('%d', '%s', '%s', '%s', '%d', '%s'));
 }, 10, 1);
-
-function hs_support_tickets_create_table()
-{
-	global $wpdb;
-	$table_name = $wpdb -> prefix . 'support_tickets';
-	$charset_collate = $wpdb -> get_charset_collate();
-
-	$sql = "CREATE TABLE IF NOT EXISTS {$table_name} (
-		id mediumint(9) NOT NULL AUTO_INCREMENT,
-		user_id bigint(20) NOT NULL,
-		user_email varchar(100) NOT NULL,
-		subject varchar(255) NOT NULL,
-		message text NOT NULL,
-		admin_response text,
-		created_at datetime DEFAULT CURRENT_TIMESTAMP,
-		updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		PRIMARY KEY (id)
-	) $charset_collate;";
-
-	require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-	dbDelta($sql);
-}
-
-
-
 
 // Save the data from the meta box
 function hs_save_details($postid)
@@ -474,7 +458,6 @@ function hs_update_progress()
     }
 }
 add_action('wp_ajax_hs_update_progress', 'hs_update_progress');
-
 
 // Add a book to library
 function hs_add_book_to_library()
