@@ -82,13 +82,7 @@ register_activation_hook(__FILE__, 'support_tickets_create_table');
 register_activation_hook(__FILE__, 'hs_book_tags_activate');
 register_activation_hook(__FILE__, 'hs_book_tags_create_table');
 register_activation_hook(__FILE__, 'hs_book_notes_activate');
-// Author and Series ID system activation hooks
-register_activation_hook(__FILE__, 'hs_authors_create_table');
-register_activation_hook(__FILE__, 'hs_author_aliases_create_table');
-register_activation_hook(__FILE__, 'hs_book_authors_create_table');
-register_activation_hook(__FILE__, 'hs_series_create_table');
-register_activation_hook(__FILE__, 'hs_book_series_create_table');
-register_activation_hook(__FILE__, 'hs_author_merges_create_table');
+register_activation_hook(__FILE__, 'hs_authors_series_activate');
 
 // On activation, set up the reviews table
 function hs_reviews_activate()
@@ -284,8 +278,17 @@ function hs_support_tickets_create_table()
 	dbDelta($sql);
 }
 
-
-
+// Author and Series ID system activation
+function hs_authors_series_activate()
+{
+	// Call all the table creation functions from the authors_series.php file
+	hs_authors_create_table();
+	hs_author_aliases_create_table();
+	hs_book_authors_create_table();
+	hs_series_create_table();
+	hs_book_series_create_table();
+	hs_author_merges_create_table();
+}
 
 // Save the data from the meta box
 function hs_save_details($postid)
