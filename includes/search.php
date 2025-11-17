@@ -31,6 +31,16 @@ function hs_search_add_to_index($post_id)
 	$permalink = get_permalink($post_id);
 	$title = get_post_field('post_title', $post_id);
 
+    // Ensure we have a valid permalink, fallback to post URL if get_permalink fails
+    if (!$permalink || $permalink === false) {
+        $permalink = get_post_permalink($post_id);
+        // If still no permalink, construct one manually
+        if (!$permalink || $permalink === false) {
+            $post_name = get_post_field('post_name', $post_id);
+            $permalink = home_url('/books/' . $post_name . '/');
+        }
+    }
+
     $wpdb->replace(
         $table_name,
         [
