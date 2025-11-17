@@ -31,7 +31,7 @@ function hs_gid_activate()
 		date_reported DATETIME,
 		reviewed_by INT,
 		INDEX (status),
-		INDEX (primary_book_id),
+		INDEX (primary_book_id)
 		)");
 
 	// ISBN tracking table for having multiple ISBNs per book
@@ -105,7 +105,7 @@ function hs_get_posts_by_gid($gid)
 	global $wpdb;
 	$table = $wpdb -> prefix . 'hs_gid';
 
-	return $wpdvb -> get_col($wpdb -> prepare(
+	return $wpdb -> get_col($wpdb -> prepare(
 		"SELECT post_id FROM $table WHERE gid = %d",
 		intval($gid)
 	));

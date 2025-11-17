@@ -13,7 +13,10 @@ if (!defined('ABSPATH'))
     exit;
 }
 
-
+require_once plugin_dir_path(__FILE__) . 'includes/authors_series.php';
+require_once plugin_dir_path(__FILE__) . 'includes/admin/authors_series_manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/authors_series_display.php';
+require_once plugin_dir_path(__FILE__) . 'includes/shortcodes/author_series.php';
 require_once plugin_dir_path(__FILE__) . 'includes/api/mentions.php';
 require_once plugin_dir_path(__FILE__) . 'includes/api/achievements.php';
 require_once plugin_dir_path(__FILE__) . 'includes/admin/chimera.php';
@@ -77,6 +80,12 @@ register_activation_hook(__FILE__, 'support_tickets_create_table');
 register_activation_hook(__FILE__, 'hs_book_tags_activate');
 register_activation_hook(__FILE__, 'hs_book_tags_create_table');
 register_activation_hook(__FILE__, 'hs_book_notes_activate');
+register_activation_hook(__FILE__, 'hs_authors_create_table');
+register_activation_hook(__FILE__, 'hs_author_aliases_create_table');
+register_activation_hook(__FILE__, 'hs_book_authors_create_table');
+register_activation_hook(__FILE__, 'hs_series_create_table');
+register_activation_hook(__FILE__, 'hs_book_series_create_table');
+register_activation_hook(__FILE__, 'hs_author_merges_create_table');
 
 // On activation, set up the reviews table
 function hs_reviews_activate()
@@ -215,10 +224,19 @@ function hs_activate()
 			// Import wp-admin/includes/upgrade.php
             require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
             dbDelta($sql);
+
+	flush_rewrite_rules();
 }
 // Register the activation hook. HotSoup = Voltron
 register_activation_hook(__FILE__, 'hs_activate');
 
+
+function hs_deactivate()
+{
+    // Flush rewrite rules to remove book post type routes
+    flush_rewrite_rules();
+}
+register_deactivation_hook(__FILE__, 'hs_deactivate');
 
 // Make sure books are indexed as soon as they are added.
 //add_action('save_post_book', function($post_id)

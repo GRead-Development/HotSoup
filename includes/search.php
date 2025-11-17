@@ -75,6 +75,11 @@ function hs_search_add_to_index($post_id)
 		);
 	}
 
+	if (!empty($author))
+	{
+		hs_process_book_authors($post_id, $author);
+	}
+
 }
 add_action('save_post_book', 'hs_search_add_to_index', 20);
 //add_action('updated_post_meta', 'hs_search_update_on_meta_change', 10, 4);
