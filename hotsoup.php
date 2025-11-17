@@ -150,10 +150,40 @@ function hs_search_activate()
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
 
+    // Fix any legacy book_name column to book_id
+    hs_search_fix_column_names();
+
     // Use update_option to ensure the value is set, even if it already exists.
     update_option('hs_search_needs_indexing', 'true');
 }
 register_activation_hook(__FILE__, 'hs_search_activate');
+
+/**
+ * Fix legacy column naming in search table
+ * Converts book_name to book_id if needed
+ */
+function hs_search_fix_column_names()
+{
+    global $wpdb;
+    $table_name = HS_SEARCH_TABLE;
+
+    // Check if table exists
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
+    if (!$table_exists) {
+        return;
+    }
+
+    // Check if book_name column exists (legacy)
+    $columns = $wpdb->get_col("SHOW COLUMNS FROM $table_name");
+
+    if (in_array('book_name', $columns) && !in_array('book_id', $columns)) {
+        // Rename book_name to book_id
+        $wpdb->query("ALTER TABLE $table_name CHANGE COLUMN book_name book_id BIGINT(20) UNSIGNED NOT NULL");
+    }
+}
+
+// Run the fix on plugin load (in case someone updates without reactivating)
+add_action('plugins_loaded', 'hs_search_fix_column_names');
 
 function ol_enqueue_modal_assets()
 {
@@ -251,7 +281,7 @@ add_action('save_post_book', function($post_id)
 
 	// Process authors for the author ID system
 	// This will only create relationships if they don't exist (preserves manual corrections)
-	if (!empty($author)) {
+	if (!empty($author) && function_exists('hs_process_book_authors')) {
 		hs_process_book_authors($post_id, $author);
 	}
 }, 10, 1);
