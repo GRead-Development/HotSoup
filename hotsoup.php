@@ -215,10 +215,20 @@ function hs_activate()
 			// Import wp-admin/includes/upgrade.php
             require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
             dbDelta($sql);
+
+    // Flush rewrite rules to ensure book permalinks work
+    flush_rewrite_rules();
 }
 // Register the activation hook. HotSoup = Voltron
 register_activation_hook(__FILE__, 'hs_activate');
 
+// When deactivated, clean up rewrite rules
+function hs_deactivate()
+{
+    // Flush rewrite rules to remove book post type routes
+    flush_rewrite_rules();
+}
+register_deactivation_hook(__FILE__, 'hs_deactivate');
 
 // Search indexing is now handled by the hs_search_add_to_index() function in includes/search.php
 
